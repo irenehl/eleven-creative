@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flows en producción · ElevenCreative</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5efe7;
+    --bg-rgb: 245, 239, 231;
+    --fg: #17120f;
+    --fg-rgb: 23, 18, 15;
+    --accent: #d4561a;
+    --orange: #ff8a1f;
+    --red: #e3412b;
+    --lilac: #a7aee0;
+    --line: rgba(var(--fg-rgb), .14);
+    --muted: rgba(var(--fg-rgb), .58);
+    --ease: cubic-bezier(.22, 1, .36, 1);
+    --sans: "Instrument Sans", system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+
+  /* ---------- atmosphere ---------- */
+  .atmos { position: fixed; inset: 0; overflow: hidden; z-index: 0; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0; transition: opacity 1.4s var(--ease); }
+  .b1 { width: 60vw; height: 60vw; background: radial-gradient(circle, var(--orange), transparent 65%); left: 45vw; top: 35vh; animation: drift1 26s ease-in-out infinite alternate; }
+  .b2 { width: 50vw; height: 50vw; background: radial-gradient(circle, var(--red), transparent 65%); left: -15vw; top: 45vh; animation: drift2 31s ease-in-out infinite alternate; }
+  .b3 { width: 45vw; height: 45vw; background: radial-gradient(circle, var(--lilac), transparent 65%); left: 10vw; top: -25vh; animation: drift3 23s ease-in-out infinite alternate; }
+  @keyframes drift1 { to { transform: translate(-12vw, -10vh) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate(10vw, -6vh) scale(.9); } }
+  @keyframes drift3 { to { transform: translate(14vw, 10vh) scale(1.2); } }
+  body[data-mood="warm"] .blob { opacity: .55; }
+  body[data-mood="calm"] .blob { opacity: .18; }
+
+  #chladni { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; transition: opacity 1.2s var(--ease); }
+  .grain { position: fixed; inset: -50%; z-index: 2; pointer-events: none; opacity: .45; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .1  0 0 0 0 .07  0 0 0 0 .05  0 0 0 .3 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    animation: grain 1.1s steps(6) infinite; }
+  @keyframes grain { 0%{transform:translate(0,0)} 25%{transform:translate(-3%,2%)} 50%{transform:translate(2%,-4%)} 75%{transform:translate(-4%,-1%)} 100%{transform:translate(0,0)} }
+
+  /* ---------- stage ---------- */
+  .viewport { position: fixed; inset: 0; z-index: 3; overflow: hidden; }
+  .stage { width: 1920px; height: 1080px; position: absolute; left: 50%; top: 50%; transform-origin: center; }
+  .slide { position: absolute; inset: 0; padding: 130px 170px; display: flex; flex-direction: column; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .7s var(--ease), filter .7s var(--ease), transform .9s var(--ease); filter: blur(8px); transform: translateY(24px); }
+  .slide.active { opacity: 1; pointer-events: auto; filter: none; transform: none; }
+  .slide.past { transform: translateY(-24px); }
+
+  .r { opacity: 0; transform: translateY(30px); transition: opacity .9s var(--ease), transform 1.1s var(--ease); }
+  .slide.active .r { opacity: 1; transform: none; transition-delay: calc(var(--d, 0) * 120ms + 250ms); }
+  .mask { display: inline-block; overflow: hidden; vertical-align: bottom; padding-bottom: .1em; }
+  .mask > span { display: inline-block; transform: translateY(105%); transition: transform 1.1s var(--ease); }
+  .slide.active .mask > span { transform: none; transition-delay: calc(var(--d, 0) * 100ms + 200ms); }
+
+  /* ---------- chrome ---------- */
+  .chrome { position: fixed; z-index: 5; left: 0; right: 0; pointer-events: none; display: flex; justify-content: space-between; align-items: center; padding: 30px 44px; }
+  .chrome.top { top: 0; }
+  .chrome.bottom { bottom: 0; font-family: var(--mono); font-size: 14px; letter-spacing: .08em; color: var(--muted); justify-content: flex-end; }
+  .logo { height: 22px; width: auto; display: block; transition: opacity .6s var(--ease); }
+  body[data-cover] .chrome.top .logo { opacity: 0; }
+
+  /* cover */
+  .cover { align-items: center; text-align: center; }
+  .cover-main { width: 1240px; height: auto; display: block; }
+  .cover-main path { opacity: 0; transform: translateY(40px); transition: opacity 1s var(--ease), transform 1.2s var(--ease); }
+  .slide.active .cover-main path { opacity: 1; transform: none; }
+  .cover-sub { display: flex; align-items: center; gap: 34px; margin-top: 90px; font-size: 56px; font-weight: 500; letter-spacing: -.025em; }
+  .cover-sub .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+  .cover-sub .place { color: var(--accent); }
+  .wave { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; display: flex; align-items: flex-end; justify-content: center; gap: 9px; padding: 0 60px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent); mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent); }
+  .wave i { flex: 1; max-width: 9px; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--orange), var(--red)); transform-origin: bottom; animation: wave var(--t) ease-in-out infinite alternate; animation-delay: var(--w); opacity: .85; }
+  @keyframes wave { from { transform: scaleY(.08); } to { transform: scaleY(1); } }
+  .progress { position: fixed; left: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, var(--lilac), var(--orange), var(--red)); z-index: 6; transition: width .8s var(--ease); }
+
+  /* ---------- type ---------- */
+  .kicker { font-family: var(--mono); font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 40px; }
+  h1, h2 { font-weight: 600; letter-spacing: -.045em; line-height: .92; }
+  .display { font-size: 200px; }
+  .h2 { font-size: 120px; }
+  .lede { font-size: 44px; line-height: 1.25; color: var(--muted); max-width: 1400px; letter-spacing: -.015em; margin-top: 36px; }
+  .lede strong { color: var(--fg); font-weight: 500; }
+  .grad { background: linear-gradient(100deg, var(--accent) 0%, var(--red) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .outline { color: transparent; -webkit-text-stroke: 2.5px var(--fg); }
+
+  /* ---------- visuals ---------- */
+  .visual { margin-top: 64px; }
+  .example { display: inline-flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 22px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 26px; }
+  .example::before { content: "☕"; font-size: 26px; }
+
+  /* chain of nodes */
+  .chain { display: flex; align-items: flex-start; gap: 24px; }
+  .node { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .chip { padding: 28px 40px; border-radius: 22px; border: 1.5px solid var(--line); background: rgba(var(--bg-rgb), .65); font-size: 38px; font-weight: 500; letter-spacing: -.02em; white-space: nowrap; }
+  .node small { font-family: var(--mono); font-size: 21px; color: var(--muted); letter-spacing: .02em; white-space: nowrap; }
+  .chip.hot { border-color: transparent; background: linear-gradient(135deg, var(--orange), var(--red)); color: var(--bg); }
+  .node.hot small { color: var(--accent); }
+  .chip.dim { color: var(--muted); border-style: dashed; }
+  .chip.pulse { animation: pulse 2.6s var(--ease) infinite; animation-delay: 1.8s; }
+  @keyframes pulse { 0%, 100% { border-color: var(--line); } 35%, 65% { border-color: var(--accent); background: rgba(255,138,31,.16); } }
+  .link { flex: 1; min-width: 24px; height: 2px; margin-top: 50px; background: repeating-linear-gradient(90deg, var(--line) 0 10px, transparent 10px 20px); background-size: 40px 2px; }
+  .slide.active .link { animation: dash 1s linear infinite; }
+  @keyframes dash { to { background-position: 40px 0; } }
+  .gate { width: 100px; height: 100px; border-radius: 50%; border: 2px solid var(--accent); display: grid; place-items: center; color: var(--accent); position: relative; }
+  .gate svg { width: 40px; height: 40px; }
+  .gate::after { content: ""; position: absolute; inset: -12px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0; }
+  .slide.active .gate::after { animation: ping 2.4s var(--ease) infinite 1.2s; }
+  @keyframes ping { 0% { transform: scale(.8); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+
+  /* meters */
+  .meters { display: flex; flex-direction: column; gap: 48px; }
+  .meter-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; font-size: 36px; font-weight: 500; letter-spacing: -.02em; }
+  .meter-top span { font-family: var(--mono); font-size: 26px; color: var(--accent); font-weight: 500; letter-spacing: 0; }
+  .track { display: flex; gap: 8px; height: 64px; }
+  .seg { border-radius: 10px; transform: scaleX(0); transform-origin: left; transition: transform .7s var(--ease); display: grid; place-items: center; font-family: var(--mono); font-size: 20px; color: var(--bg); }
+  .slide.active .seg { transform: scaleX(1); transition-delay: calc(var(--d) * 240ms + 700ms); }
+  .seg.heavy { background: linear-gradient(90deg, var(--red), var(--orange)); }
+  .seg.light { background: rgba(var(--fg-rgb), .14); color: var(--fg); }
+
+  /* ladder */
+  .ladder { display: flex; align-items: flex-end; gap: 36px; height: 260px; }
+  .rung { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 18px; height: 100%; }
+  .bar { border-radius: 18px 18px 6px 6px; transform: scaleY(0); transform-origin: bottom; transition: transform 1s var(--ease); display: flex; align-items: flex-start; justify-content: center; padding-top: 16px; font-family: var(--mono); font-size: 22px; letter-spacing: .06em; text-transform: uppercase; }
+  .slide.active .bar { transform: scaleY(1); transition-delay: calc(var(--d) * 150ms + 500ms); }
+  .bar.l { background: rgba(var(--fg-rgb), .1); color: var(--muted); }
+  .bar.h { background: linear-gradient(180deg, var(--orange), var(--red)); color: var(--bg); }
+  .rung b { font-size: 38px; font-weight: 500; letter-spacing: -.02em; }
+
+  /* two columns */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+  .col { border-radius: 28px; padding: 48px 52px; border: 1.5px solid var(--line); background: rgba(var(--bg-rgb), .6); }
+  .col.hot { border-color: transparent; background: linear-gradient(150deg, rgba(255,138,31,.24), rgba(227,65,43,.12)); }
+  .col .tag { font-family: var(--mono); font-size: 22px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .col.hot .tag { color: var(--accent); }
+  .col h3 { font-size: 56px; font-weight: 600; letter-spacing: -.035em; margin: 16px 0 24px; line-height: 1; }
+  .col p { font-size: 36px; line-height: 1.32; color: var(--muted); letter-spacing: -.01em; }
+  .col.hot p { color: var(--fg); }
+
+  /* formats */
+  .formats { display: flex; align-items: center; gap: 0; }
+  .formats > .node { flex: none; }
+  .formats > .link { flex: 0 0 70px; margin-top: 0; }
+  .fcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; flex: 1; }
+  .fcard { border-radius: 24px; padding: 26px 26px 28px; border: 1.5px solid var(--line); background: rgba(var(--bg-rgb), .65); display: flex; flex-direction: column; gap: 10px; }
+  .fcard.hot { border-color: transparent; background: linear-gradient(150deg, rgba(255,138,31,.26), rgba(227,65,43,.14)); }
+  .thumb { height: 128px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+  .thumb i { display: grid; place-items: center; height: 120px; border-radius: 12px; background: linear-gradient(160deg, var(--lilac), var(--orange) 60%, var(--red)); transform: scale(.4); opacity: 0; transition: transform .9s var(--ease), opacity .6s var(--ease); color: var(--bg); font-style: normal; font-family: var(--mono); font-size: 18px; letter-spacing: .06em; }
+  .slide.active .thumb i { transform: none; opacity: 1; transition-delay: calc(var(--d) * 180ms + 700ms); }
+  .thumb i.sq { width: 120px; }
+  .thumb i.pt { width: 96px; }
+  .thumb i.vt { width: 68px; height: 120px; }
+  .thumb i.wd { width: 210px; height: 118px; }
+  .fcard h4 { font-size: 40px; font-weight: 600; letter-spacing: -.03em; }
+  .fcard p { font-size: 25px; line-height: 1.3; color: var(--muted); min-height: 66px; }
+  .fcard .cost { font-family: var(--mono); font-size: 18px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+  .fcard.hot .cost { color: var(--accent); }
+
+  /* speakers */
+  .speakers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  .spk { display: flex; flex-direction: column; }
+  .photo { aspect-ratio: 1 / 1.08; border-radius: 26px; overflow: hidden; position: relative; background: linear-gradient(160deg, var(--lilac), var(--orange) 60%, var(--red)); display: grid; place-items: center; }
+  .photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.12); transition: transform 1.6s var(--ease); }
+  .slide.active .photo img { transform: scale(1); }
+  .photo .ini { font-size: 110px; font-weight: 600; letter-spacing: -.05em; color: var(--bg); opacity: .9; }
+  .spk .n { font-family: var(--mono); font-size: 20px; color: var(--accent); letter-spacing: .08em; margin-top: 28px; }
+  .spk h4 { font-size: 42px; font-weight: 600; letter-spacing: -.03em; margin-top: 8px; line-height: 1.05; }
+  .spk .role { font-family: var(--mono); font-size: 19px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+  .spk p { font-size: 24px; line-height: 1.35; color: var(--muted); margin-top: 16px; }
+
+  /* close + qr */
+  .close-grid { display: grid; grid-template-columns: 1fr 440px; gap: 80px; align-items: center; }
+  .qr-card { border-radius: 32px; padding: 40px; background: #fff; box-shadow: 0 30px 80px rgba(227,65,43,.18); display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .qr-kicker { font-family: var(--mono); font-size: 20px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+  .qr-img { width: 300px; height: 300px; margin: 26px 0 28px; position: relative; }
+  .qr-img img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .qr-card h3 { font-size: 44px; font-weight: 600; letter-spacing: -.03em; line-height: 1; }
+  .qr-url { font-family: var(--mono); font-size: 20px; color: var(--muted); margin-top: 12px; }
+  .slide.active .qr-card { animation: qrFloat 4s ease-in-out infinite 1.5s; }
+  @keyframes qrFloat { 50% { transform: translateY(-10px); } }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .step { border-radius: 24px; padding: 34px 32px; border: 1.5px solid var(--line); background: rgba(var(--bg-rgb), .65); }
+  .step.hot { border-color: transparent; background: linear-gradient(150deg, rgba(255,138,31,.26), rgba(227,65,43,.14)); }
+  .step .n { font-family: var(--mono); font-size: 22px; color: var(--accent); }
+  .step h4 { font-size: 38px; font-weight: 600; letter-spacing: -.03em; margin: 14px 0 12px; line-height: 1.05; }
+  .step p { font-size: 26px; line-height: 1.3; color: var(--muted); }
+
+  .devline { margin-top: 44px; display: flex; align-items: center; gap: 22px; font-size: 30px; color: var(--muted); }
+  .code { font-family: var(--mono); font-size: 26px; padding: 14px 24px; border-radius: 14px; background: var(--fg); color: var(--bg); }
+  .code .k { color: var(--orange); }
+
+  /* list */
+  .list { list-style: none; display: flex; flex-direction: column; }
+  .list li { display: grid; grid-template-columns: 100px 1fr auto; align-items: baseline; gap: 30px; padding: 26px 0; border-bottom: 1.5px solid var(--line); }
+  .list li:first-child { border-top: 1.5px solid var(--line); }
+  .list .n { font-family: var(--mono); font-size: 26px; color: var(--accent); letter-spacing: .06em; }
+  .list b { font-size: 48px; font-weight: 500; letter-spacing: -.03em; }
+  .list span.d { font-size: 30px; color: var(--muted); letter-spacing: -.01em; text-align: right; }
+
+  .live { display: inline-flex; align-items: center; gap: 18px; font-family: var(--mono); font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--red); margin-bottom: 40px; }
+  .live i { width: 16px; height: 16px; border-radius: 50%; background: var(--red); animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .foot { position: absolute; left: 170px; right: 170px; bottom: 100px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 22px; letter-spacing: .08em; color: var(--muted); }
+  .recap { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 56px; }
+  .recap span { font-size: 30px; padding: 14px 26px; border-radius: 99px; border: 1.5px solid var(--line); background: rgba(var(--bg-rgb), .6); }
+  .recap span b { color: var(--accent); font-family: var(--mono); font-weight: 500; font-size: 22px; margin-right: 10px; }
+
+  .help { position: fixed; z-index: 10; left: 50%; bottom: 60px; transform: translateX(-50%); font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 18px; border-radius: 99px; border: 1px solid var(--line); background: rgba(var(--bg-rgb), .8); transition: opacity 1s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; transition-delay: 0s !important; }
+  }
+</style>
+</head>
+<body data-mood="warm">
+
+<div class="atmos" aria-hidden="true"><div class="blob b3"></div><div class="blob b2"></div><div class="blob b1"></div></div>
+<canvas id="chladni" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="chrome top">
+  <img class="logo" src="assets/elevencreative-logo.png" alt="ElevenCreative">
+</header>
+<footer class="chrome bottom"><div id="count">01 / 12</div></footer>
+<div class="progress" id="progress"></div>
+
+<main class="viewport">
+<div class="stage" id="stage">
+
+  <!-- 00 PORTADA WORKSHOP -->
+  <section class="slide cover" data-mood="warm" data-mode="3,5" data-ch=".3" data-cover>
+    <svg class="cover-main" viewBox="0 0 694 90" role="img" aria-label="ElevenLabs">
+      <path style="transition-delay:0.05s" d="M0 0H18.413V88.5124H0V0Z" fill="currentColor"/>
+      <path style="transition-delay:0.11s" d="M36.5788 0H54.9917V88.5124H36.5788V0Z" fill="currentColor"/>
+      <path style="transition-delay:0.17s" d="M73.1551 0H127.652V14.7521H91.568V35.8264H125.181V50.5785H91.568V73.7603H127.652V88.5124H73.1551V0Z" fill="currentColor"/>
+      <path style="transition-delay:0.23s" d="M138.896 0H156.32V88.5124H138.896V0Z" fill="currentColor"/>
+      <path style="transition-delay:0.29s" d="M166.824 55.2893C166.824 31.1157 178.811 20.7025 197.471 20.7025C216.131 20.7025 226.759 30.9917 226.759 55.5372V59.5041H184.001C184.619 73.8843 188.944 78.719 197.224 78.719C203.773 78.719 207.851 74.876 208.593 68.1818H226.017C224.905 82.8099 212.795 90 197.224 90C177.452 90 166.824 79.4628 166.824 55.2893ZM209.582 47.9752C208.717 35.8264 204.515 31.8595 197.224 31.8595C189.933 31.8595 185.36 35.9504 184.125 47.9752H209.582Z" fill="currentColor"/>
+      <path style="transition-delay:0.35s" d="M248.261 22.1901H230.466L251.968 88.5124H271.123L292.625 22.1901H274.83L261.365 72.1488L248.261 22.1901Z" fill="currentColor"/>
+      <path style="transition-delay:0.41s" d="M295.962 55.2893C295.962 31.1157 307.949 20.7025 326.609 20.7025C345.269 20.7025 355.897 30.9917 355.897 55.5372V59.5041H313.139C313.757 73.8843 318.082 78.719 326.362 78.719C332.911 78.719 336.989 74.876 337.731 68.1818H355.155C354.043 82.8099 341.932 90 326.362 90C306.589 90 295.962 79.4628 295.962 55.2893ZM338.719 47.9752C337.854 35.8264 333.653 31.8595 326.362 31.8595C319.071 31.8595 314.498 35.9504 313.263 47.9752H338.719Z" fill="currentColor"/>
+      <path style="transition-delay:0.47s" d="M384.072 49.4628C384.072 39.0496 389.015 33.3471 396.677 33.3471C402.979 33.3471 406.563 37.314 406.563 45.8678V88.5124H423.987V43.1405C423.987 27.7686 415.337 20.7025 402.732 20.7025C394.205 20.7025 387.162 25.0413 384.072 30.7438V22.1901H366.401V88.5124H384.072V49.4628Z" fill="currentColor"/>
+      <path style="transition-delay:0.53s" d="M438.443 0H456.856V73.7603H491.457V88.5124H438.443V0Z" fill="currentColor"/>
+      <path style="transition-delay:0.59s" fill-rule="evenodd" clip-rule="evenodd" d="M495.783 55.2893C495.783 30 507.399 20.7025 522.352 20.7025C529.766 20.7025 536.563 24.9174 539.282 29.3802V22.1901H557.077V88.5124H539.776V80.7025C537.181 85.9091 529.89 90 521.857 90C506.04 90 495.783 79.8347 495.783 55.2893ZM526.924 33.719C535.574 33.719 540.27 40.2893 540.27 55.2893C540.27 70.2893 535.574 76.9835 526.924 76.9835C518.274 76.9835 513.331 70.2893 513.331 55.2893C513.331 40.2893 518.274 33.719 526.924 33.719Z" fill="currentColor"/>
+      <path style="transition-delay:0.65s" fill-rule="evenodd" clip-rule="evenodd" d="M587.847 80.7025V88.5124H570.547V0H587.971V29.3802C590.937 24.7934 597.857 20.7025 605.272 20.7025C619.854 20.7025 631.47 30 631.47 55.2893C631.47 80.5785 620.101 90 604.901 90C596.869 90 590.319 85.9091 587.847 80.7025ZM600.329 33.843C608.979 33.843 613.922 40.2893 613.922 55.2893C613.922 70.2893 608.979 76.9835 600.329 76.9835C591.678 76.9835 586.982 70.2893 586.982 55.2893C586.982 40.2893 591.678 33.843 600.329 33.843Z" fill="currentColor"/>
+      <path style="transition-delay:0.71s" d="M638.638 68.8017H656.062C656.309 75.7438 660.016 79.0909 666.566 79.0909C673.115 79.0909 676.823 76.1157 676.823 70.9091C676.823 66.1983 673.981 64.4628 667.802 62.9752L662.488 61.6116C647.412 57.7686 639.873 53.6777 639.873 41.157C639.873 28.6364 651.49 20.7025 666.319 20.7025C681.148 20.7025 692.394 26.5289 692.888 40.2893H675.463C675.093 34.2149 671.385 31.6116 666.072 31.6116C660.758 31.6116 657.05 34.2149 657.05 39.1736C657.05 43.7603 660.016 45.4959 665.207 46.7355L670.644 48.0992C684.979 51.6942 694 55.2893 694 68.6777C694 82.0661 682.137 90 666.072 90C648.647 90 639.008 83.4297 638.638 68.8017Z" fill="currentColor"/>
+    </svg>
+    <div class="cover-sub r" style="--d:5"><img src="assets/elevencreative-logo.png" alt="ElevenCreative" style="height:44px;width:auto"><span>Workshop</span><span class="dot"></span><span class="place">San Salvador</span></div>
+    <div class="wave" id="wave" aria-hidden="true"></div>
+  </section>
+
+  <!-- 00b SPEAKERS -->
+  <section class="slide" data-mood="calm" data-mode="2,5" data-ch=".1">
+    <div class="kicker r" style="--d:0">Speakers</div>
+    <h2 class="h2 r" style="--d:1">Quiénes te acompañan hoy.</h2>
+    <div class="visual speakers">
+      <div class="spk r" style="--d:2"><div class="photo"><img src="assets/speakers/daniela-huezo.jpg" alt="Daniela Huezo" style="object-position:center 20%"></div><span class="n">01</span><h4>Daniela Huezo</h4><span class="role">Ai Labs Co-founder</span><p>SpaceXAI Ambassador · ElevenLabs Ambassador</p></div>
+      <div class="spk r" style="--d:3"><div class="photo"><img src="assets/speakers/walter-morales.jpg" alt="Walter Morales" style="object-position:center top"></div><span class="n">02</span><h4>Walter Morales</h4><span class="role">Ai Labs Founder</span><p>SpaceXAI Ambassadors Regional Lead · Codex Ambassador</p></div>
+      <div class="spk r" style="--d:4"><div class="photo"><img src="assets/speakers/melanie-menendez.jpg" alt="Melanie Menéndez" style="object-position:center 25%"></div><span class="n">03</span><h4>Melanie Menéndez</h4><span class="role">Diseñadora Estratégica</span><p>Campus Leader Escuela Mónica Herrera · Co-founder Prototyp3d</p></div>
+      <div class="spk r" style="--d:5"><div class="photo"><img src="assets/speakers/fernando-borea.jpg" alt="Fernando Borea" style="object-position:center 15%"></div><span class="n">04</span><h4>Fernando Borea</h4><span class="role">Founder &amp; CEO</span><p>Borea Labs</p></div>
+    </div>
+  </section>
+
+  <!-- 01 PORTADA CHARLA -->
+  <section class="slide" data-mood="warm" data-mode="2,3" data-ch=".35">
+    <div class="kicker r" style="--d:0">ElevenCreative · Flows</div>
+    <h1 class="display">
+      <span class="mask" style="--d:1"><span>Flows en</span></span><br>
+      <span class="mask" style="--d:2"><span class="grad">producción.</span></span>
+    </h1>
+    <p class="lede r" style="--d:4">Cómo crear contenido con IA <strong>sin gastar créditos de más.</strong></p>
+    <div class="foot r" style="--d:5"><span>[Nombre]</span><span>[Evento] · 2026</span></div>
+  </section>
+
+  <!-- 02 TESIS -->
+  <section class="slide" data-mood="calm" data-mode="1,4" data-ch=".2">
+    <h2 class="display" style="font-size:170px">
+      <span class="mask" style="--d:0"><span>Cualquiera arma</span></span><br>
+      <span class="mask" style="--d:1"><span>un Flow.</span></span><br>
+      <span class="mask" style="--d:3"><span class="outline">Pocos lo diseñan.</span></span>
+    </h2>
+    <p class="lede r" style="--d:5">Unir piezas es fácil. <strong>Ordenarlas bien es lo que ahorra tiempo y créditos.</strong></p>
+  </section>
+
+  <!-- 03 QUÉ ES FLOWS -->
+  <section class="slide" data-mood="calm" data-mode="3,5" data-ch=".12">
+    <div class="kicker r" style="--d:0">¿Qué es Flows?</div>
+    <h2 class="h2 r" style="--d:1">Un lienzo para<br><span class="grad">unir modelos de IA.</span></h2>
+    <p class="lede r" style="--d:2">Cada caja es un modelo. <strong>Cada una le pasa su resultado a la siguiente.</strong></p>
+    <div class="visual r" style="--d:3">
+      <div class="example">Ejemplo: un anuncio de café de 15 segundos</div>
+      <div class="chain">
+        <div class="node"><div class="chip">Guion</div><small>el texto</small></div><div class="link"></div>
+        <div class="node"><div class="chip">Imagen</div><small>foto del café</small></div><div class="link"></div>
+        <div class="node"><div class="chip">Voz</div><small>dice el slogan</small></div><div class="link"></div>
+        <div class="node"><div class="chip">Video</div><small>anima la imagen</small></div><div class="link"></div>
+        <div class="node hot"><div class="chip hot">Anuncio</div><small>listo</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 PROBLEMA -->
+  <section class="slide" data-mood="calm" data-mode="2,5" data-ch=".12">
+    <div class="kicker r" style="--d:0">El problema</div>
+    <h2 class="h2 r" style="--d:1">Nada sale<br><span class="grad">a la primera.</span></h2>
+    <p class="lede r" style="--d:2">Cambias el slogan 5 veces. <strong>¿Cuántas veces pagas el video?</strong></p>
+    <div class="visual meters">
+      <div class="r" style="--d:3">
+        <div class="meter-top">Cada cambio rehace todo <span>5 videos</span></div>
+        <div class="track">
+          <div class="seg heavy" style="--d:0; flex:5">video</div><div class="seg heavy" style="--d:1; flex:5">video</div><div class="seg heavy" style="--d:2; flex:5">video</div><div class="seg heavy" style="--d:3; flex:5">video</div><div class="seg heavy" style="--d:4; flex:5">video</div>
+        </div>
+      </div>
+      <div class="r" style="--d:4">
+        <div class="meter-top">Ajustas el slogan, video al final <span>1 video</span></div>
+        <div class="track">
+          <div class="seg light" style="--d:0; flex:1.4">voz</div><div class="seg light" style="--d:1; flex:1.4">voz</div><div class="seg light" style="--d:2; flex:1.4">voz</div><div class="seg light" style="--d:3; flex:1.4">voz</div><div class="seg heavy" style="--d:4; flex:5">video</div><div style="flex:14.4"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 LAS 5 REGLAS -->
+  <section class="slide" data-mood="warm" data-mode="1,3" data-ch=".18">
+    <div class="kicker r" style="--d:0">5 reglas para gastar menos</div>
+    <ul class="list">
+      <li class="r" style="--d:1"><span class="n">01</span><b>Primero lo barato, al final lo caro</b><span class="d">El video siempre va de último</span></li>
+      <li class="r" style="--d:2"><span class="n">02</span><b>Revisa antes de generar el video</b><span class="d">Que alguien lo apruebe primero</span></li>
+      <li class="r" style="--d:3"><span class="n">03</span><b>Cambia solo lo necesario</b><span class="d">Lo demás se reutiliza</span></li>
+      <li class="r" style="--d:4"><span class="n">04</span><b>Prueba en borrador</b><span class="d">La mejor calidad, solo al final</span></li>
+      <li class="r" style="--d:5"><span class="n">05</span><b>Guárdalo como plantilla</b><span class="d">Para usarlo una y otra vez</span></li>
+    </ul>
+  </section>
+
+  <!-- 06 REGLA 1 -->
+  <section class="slide" data-mood="calm" data-mode="3,4" data-ch=".1">
+    <div class="kicker r" style="--d:0">Regla 01</div>
+    <h2 class="h2 r" style="--d:1">Primero lo barato.<br><span class="grad">Al final lo caro.</span></h2>
+    <p class="lede r" style="--d:2">Prueba y ajusta en texto, imagen y voz. <strong>El video va al final: es lo que más créditos consume.</strong></p>
+    <div class="visual ladder">
+      <div class="rung"><div class="bar l" style="--d:0; height:22%">bajo</div><b>1. Guion</b></div>
+      <div class="rung"><div class="bar l" style="--d:1; height:34%">bajo</div><b>2. Imagen</b></div>
+      <div class="rung"><div class="bar l" style="--d:2; height:38%">bajo</div><b>3. Voz</b></div>
+      <div class="rung"><div class="bar h" style="--d:3; height:100%">alto</div><b>4. Video</b></div>
+    </div>
+  </section>
+
+  <!-- 07 REGLA 2 -->
+  <section class="slide" data-mood="calm" data-mode="2,7" data-ch=".1">
+    <div class="kicker r" style="--d:0">Regla 02</div>
+    <h2 class="h2 r" style="--d:1">Revisa antes de<br><span class="grad">generar el video.</span></h2>
+    <p class="lede r" style="--d:2">Alguien revisa guion, imagen y voz antes del video. <strong>El modo “assist” de Flows te pide permiso antes de gastar.</strong></p>
+    <div class="visual chain r" style="--d:3">
+      <div class="node"><div class="chip">Guion + imagen + voz</div><small>borrador</small></div><div class="link"></div>
+      <div class="node hot"><div class="gate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5 5L20 7"/></svg></div><small>¿aprobado?</small></div><div class="link"></div>
+      <div class="node hot"><div class="chip hot">Video</div><small>se genera una vez</small></div>
+    </div>
+  </section>
+
+  <!-- 08 REGLA 3 -->
+  <section class="slide" data-mood="calm" data-mode="4,5" data-ch=".1">
+    <div class="kicker r" style="--d:0">Regla 03</div>
+    <h2 class="h2 r" style="--d:1">Cambia solo<br><span class="grad">lo necesario.</span></h2>
+    <p class="lede r" style="--d:2">Si cambias la voz, Flows no rehace el guion ni la imagen. <strong>Solo rehace lo que viene después.</strong></p>
+    <div class="visual chain r" style="--d:3">
+      <div class="node"><div class="chip dim">Guion</div><small>se reutiliza</small></div><div class="link"></div>
+      <div class="node"><div class="chip dim">Imagen</div><small>se reutiliza</small></div><div class="link"></div>
+      <div class="node hot"><div class="chip hot">Voz ✎</div><small>la cambiaste</small></div><div class="link"></div>
+      <div class="node"><div class="chip pulse">Video</div><small>se rehace</small></div><div class="link"></div>
+      <div class="node"><div class="chip pulse">Anuncio</div><small>se rehace</small></div>
+    </div>
+  </section>
+
+  <!-- 09 REGLA 4 -->
+  <section class="slide" data-mood="calm" data-mode="3,7" data-ch=".1">
+    <div class="kicker r" style="--d:0">Regla 04</div>
+    <h2 class="h2 r" style="--d:1">Prueba en borrador.<br><span class="grad">Entrega en alta calidad.</span></h2>
+    <div class="visual cols">
+      <div class="col r" style="--d:3"><span class="tag">Mientras pruebas</span><h3>Modelo rápido</h3><p>Clips cortos, baja calidad, varias opciones para elegir.</p></div>
+      <div class="col hot r" style="--d:4"><span class="tag">Cuando ya está aprobado</span><h3>El mejor modelo</h3><p>Calidad máxima y duración final. Una sola vez.</p></div>
+    </div>
+  </section>
+
+  <!-- 10 REGLA 5 -->
+  <section class="slide" data-mood="calm" data-mode="5,6" data-ch=".08">
+    <div class="kicker r" style="--d:0">Regla 05</div>
+    <h2 class="h2 r" style="--d:1">Guárdalo como<br><span class="grad">plantilla.</span></h2>
+    <p class="lede r" style="--d:2">Un Template es tu Flow guardado. <strong>Tu equipo solo cambia los datos y le da a correr.</strong></p>
+    <div class="visual chain r" style="--d:3">
+      <div class="node"><div class="chip">Nuevo producto</div><small>“Café descafeinado”</small></div><div class="link"></div>
+      <div class="node hot"><div class="chip hot">Template</div><small>el mismo Flow</small></div><div class="link"></div>
+      <div class="node"><div class="chip">Anuncio nuevo</div><small>sin rearmar nada</small></div>
+    </div>
+    <div class="devline r" style="--d:5">Para devs, también por API: <span class="code"><span class="k">POST</span> /v1/flows/templates/{id}/runs</span></div>
+  </section>
+
+  <!-- 10b CHIMERA -->
+  <section class="slide" data-mood="warm" data-mode="4,7" data-ch=".14">
+    <div class="kicker r" style="--d:0">Ejemplo real · Nuevo en ElevenCreative</div>
+    <h2 class="h2 r" style="--d:1">Chimera: una plantilla<br><span class="grad">lista para usar.</span></h2>
+    <p class="lede r" style="--d:2">Subes la imagen de un personaje, escribes lo que dice <strong>y Chimera lo hace hablar.</strong></p>
+    <div class="visual chain r" style="--d:3">
+      <div class="node"><div class="chip">Imagen</div><small>tu personaje</small></div><div class="link"></div>
+      <div class="node"><div class="chip">Guion</div><small>[laughs] [whispers]</small></div><div class="link"></div>
+      <div class="node"><div class="chip">Eleven v4</div><small>pone la voz</small></div><div class="link"></div>
+      <div class="node"><div class="chip">Seedance 2.5</div><small>hace el video</small></div><div class="link"></div>
+      <div class="node hot"><div class="chip hot">Personaje hablando</div><small>en un solo paso</small></div>
+    </div>
+  </section>
+
+  <!-- 10c CUATRO FORMATOS -->
+  <section class="slide" data-mood="calm" data-mode="5,7" data-ch=".1">
+    <div class="kicker r" style="--d:0">Caso: una campaña completa</div>
+    <h2 class="h2 r" style="--d:1">Un producto.<br><span class="grad">Cuatro formatos.</span></h2>
+    <div class="visual formats r" style="--d:2">
+      <div class="node"><div class="chip">Foto del<br>producto</div><small>la única entrada</small></div>
+      <div class="link"></div>
+      <div class="fcards">
+        <div class="fcard"><div class="thumb"><i class="sq" style="--d:0"></i></div><h4>Catálogo</h4><p>Producto en fondo limpio</p><span class="cost">Imagen · bajo</span></div>
+        <div class="fcard"><div class="thumb"><i class="pt" style="--d:1"></i></div><h4>Pose</h4><p>Una persona usando el producto</p><span class="cost">Imagen · bajo</span></div>
+        <div class="fcard"><div class="thumb"><i class="vt" style="--d:2"></i></div><h4>Story</h4><p>Vertical, con voz y música</p><span class="cost">+ voz y música · medio</span></div>
+        <div class="fcard hot"><div class="thumb"><i class="wd" style="--d:3">▶</i></div><h4>Cinema</h4><p>Anuncio en video, horizontal</p><span class="cost">Video · alto · al final</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 DEMO -->
+  <section class="slide" data-mood="warm" data-mode="2,3" data-ch=".2">
+    <div class="live r" style="--d:0"><i></i>Demo en vivo</div>
+    <h2 class="h2 r" style="--d:1">Armamos la campaña<br><span class="grad">en un solo Flow.</span></h2>
+    <div class="visual steps">
+      <div class="step r" style="--d:3"><span class="n">01</span><h4>Subo la foto</h4><p>Del producto. Es lo único que cambia.</p></div>
+      <div class="step r" style="--d:4"><span class="n">02</span><h4>Catálogo y pose</h4><p>Imágenes: pruebo todas las veces que quiera.</p></div>
+      <div class="step r" style="--d:5"><span class="n">03</span><h4>Story</h4><p>Le sumo voz con Eleven v4 y música.</p></div>
+      <div class="step hot r" style="--d:6"><span class="n">04</span><h4>Cinema</h4><p>El video, solo cuando todo está aprobado.</p></div>
+    </div>
+  </section>
+
+  <!-- 12 CIERRE -->
+  <section class="slide close" data-mood="warm" data-mode="2,3" data-ch=".35">
+    <div class="close-grid">
+      <div>
+        <h2 class="display" style="font-size:128px">
+          <span class="mask" style="--d:0"><span>Diséñalo una vez.</span></span><br>
+          <span class="mask" style="--d:2"><span class="grad">Úsalo mil veces.</span></span>
+        </h2>
+        <div class="recap r" style="--d:4">
+          <span><b>01</b>Primero lo barato</span><span><b>02</b>Revisa antes del video</span><span><b>03</b>Cambia solo lo necesario</span><span><b>04</b>Prueba en borrador</span><span><b>05</b>Guárdalo como plantilla</span>
+        </div>
+      </div>
+      <div class="qr-card r" style="--d:5">
+        <span class="qr-kicker">Escanea aquí</span>
+        <div class="qr-img"><img src="assets/qr-redeem.svg" alt="QR para redimir códigos en redeem.dhuezo.dev"></div>
+        <h3>Redime tus códigos</h3>
+        <span class="qr-url">redeem.dhuezo.dev</span>
+      </div>
+    </div>
+    <div class="foot r" style="--d:6"><span>Gracias · ¿Preguntas?</span></div>
+  </section>
+
+</div>
+</main>
+
+<div class="help" id="help">← → navegar · F pantalla completa</div>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = [...document.querySelectorAll('.slide')];
+  const count = document.getElementById('count'), progress = document.getElementById('progress');
+  const pad = n => String(n).padStart(2, '0');
+
+  const fit = () => stage.style.transform = `translate(-50%, -50%) scale(${Math.min(innerWidth / 1920, innerHeight / 1080)})`;
+  addEventListener('resize', fit); fit();
+
+  let idx = Math.max(0, Math.min(slides.length - 1, (parseInt(location.hash.slice(1)) || 1) - 1));
+
+  const show = i => {
+    idx = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => { s.classList.toggle('active', k === idx); s.classList.toggle('past', k < idx); });
+    const s = slides[idx];
+    document.body.dataset.mood = s.dataset.mood || 'calm';
+    document.body.toggleAttribute('data-cover', s.hasAttribute('data-cover'));
+    count.textContent = `${pad(idx + 1)} / ${pad(slides.length)}`;
+    progress.style.width = ((idx + 1) / slides.length * 100) + '%';
+    history.replaceState(null, '', '#' + (idx + 1));
+    Chladni.to(s.dataset.mode, parseFloat(s.dataset.ch || .1));
+  };
+
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(idx + 1); }
+    else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(idx - 1); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key.toLowerCase() === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+  });
+  addEventListener('click', e => e.clientX > innerWidth * .3 ? show(idx + 1) : show(idx - 1));
+  setTimeout(() => document.getElementById('help').style.opacity = 0, 4500);
+
+  /* Chladni: cos(nπx)cos(mπy) − cos(mπx)cos(nπy) = 0 */
+  const Chladni = (() => {
+    const cv = document.getElementById('chladni'), ctx = cv.getContext('2d');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cell = 14, dur = 1800;
+    let dpr, cols, rows, vals, from = [2, 3], target = [2, 3], t0 = 0;
+    const field = (x, y, n, m) => Math.cos(n * Math.PI * x) * Math.cos(m * Math.PI * y) - Math.cos(m * Math.PI * x) * Math.cos(n * Math.PI * y);
+    const resize = () => {
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+      cols = Math.ceil(innerWidth / cell) + 1; rows = Math.ceil(innerHeight / cell) + 1;
+      vals = new Float32Array(cols * rows);
+    };
+    addEventListener('resize', resize); resize();
+    const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    const lerp = (a, b) => a / (a - b);
+
+    const draw = now => {
+      const k = ease(Math.min(1, (now - t0) / dur));
+      const breathe = reduce ? 0 : Math.sin(now / 2600) * .12;
+      const sx = 1 / Math.min(innerWidth, innerHeight);
+      const ox = (innerWidth * sx - 1) / 2, oy = (innerHeight * sx - 1) / 2;
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const x = i * cell * sx - ox, y = j * cell * sx - oy;
+        vals[j * cols + i] = (1 - k) * field(x, y, from[0], from[1]) + k * field(x, y, target[0], target[1]) + breathe * Math.sin(Math.PI * x * 1.5) * Math.sin(Math.PI * y * 1.5);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      ctx.strokeStyle = 'rgba(23,18,15,.6)'; ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      for (let j = 0; j < rows - 1; j++) for (let i = 0; i < cols - 1; i++) {
+        const tl = vals[j * cols + i], tr = vals[j * cols + i + 1], br = vals[(j + 1) * cols + i + 1], bl = vals[(j + 1) * cols + i];
+        const c = (tl > 0) | (tr > 0) << 1 | (br > 0) << 2 | (bl > 0) << 3;
+        if (c === 0 || c === 15) continue;
+        const x = i * cell, y = j * cell;
+        const T = [x + cell * lerp(tl, tr), y], R = [x + cell, y + cell * lerp(tr, br)];
+        const B = [x + cell * lerp(bl, br), y + cell], L = [x, y + cell * lerp(tl, bl)];
+        const seg = (p, q) => { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); };
+        switch (c) {
+          case 1: case 14: seg(L, T); break;
+          case 2: case 13: seg(T, R); break;
+          case 3: case 12: seg(L, R); break;
+          case 4: case 11: seg(R, B); break;
+          case 6: case 9: seg(T, B); break;
+          case 7: case 8: seg(L, B); break;
+          case 5: seg(L, T); seg(R, B); break;
+          case 10: seg(T, R); seg(L, B); break;
+        }
+      }
+      ctx.stroke();
+      if (!reduce) requestAnimationFrame(draw);
+    };
+    requestAnimationFrame(draw);
+    return {
+      to(mode, op) {
+        const [n, m] = (mode || '2,3').split(',').map(Number);
+        cv.style.opacity = op;
+        if (n === target[0] && m === target[1]) return;
+        from = target.slice(); target = [n, m]; t0 = performance.now();
+        if (reduce) requestAnimationFrame(t => { t0 = t - dur; draw(t); });
+      }
+    };
+  })();
+
+  const wave = document.getElementById('wave');
+  for (let i = 0; i < 100; i++) {
+    const b = document.createElement('i');
+    b.style.setProperty('--t', (.6 + Math.random() * 1.2).toFixed(2) + 's');
+    b.style.setProperty('--w', (-Math.random() * 2).toFixed(2) + 's');
+    b.style.height = (20 + Math.random() * 80) + '%';
+    wave.appendChild(b);
+  }
+  const coverModes = ['3,5', '2,7', '4,5', '1,6', '3,7', '2,5'];
+  let cm = 0;
+  setInterval(() => {
+    if (!slides[idx].hasAttribute('data-cover')) return;
+    cm = (cm + 1) % coverModes.length;
+    Chladni.to(coverModes[cm], .3);
+  }, 5000);
+
+  show(idx);
+})();
+</script>
+</body>
+</html>
